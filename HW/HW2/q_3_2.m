@@ -9,56 +9,58 @@ T = 0.1;
 A = [1 T ;0 1];
 B = [T^2 /2 ; T];
 
-[P,K,L,info] = idare(A,B,Q,R,[],[]);
+%% 3.2: Riccati Equation Solution
+[K_dlqr,cov_dlqr, poles] = dlqr(A,B,Q,R);
+[cov_dare,K_dare,L,info] = idare(A,B,Q,R,[],[]);
+
+%% 3.4: Stochastic System Plot
 sigma = 0.001;
-sig_W = 0.0001;
-sig_V = 0.00001;
+sig_W = sqrt(0.0001);
+sig_V = sqrt(0.00001);
 k = 100;
 x0 = [2;0];
 x_k = [];
-
+C = eye(2);
+y_k_all = [];
 for ind = 1:k
     w_k = normrnd(0,sqrt(sig_W));
     v_k = normrnd(0,sqrt(sig_V));
-    u_k = -K*x0;
-    x_k_1 = A*x0 + B*(u_k + w_k) +v_k;
-    x_k = [x_k ; (x_k_1+v_k)']; 
+    u_k = -K_dlqr*x0;
+    x_k_1 = A*x0 + B*(u_k + w_k);
+    x_k = [x_k ; (x_k_1)'+v_k]; 
     x0 = x_k_1;
+    y_k  = C*x_k_1 + v_k;
+    y_k_all = [y_k_all ; y_k'];
 end
 figure (1)
 plot(1:k,x_k)
 title('Trajectory of the stochastic system')
 xlabel('Time Steps')
-ylabel('Predicted State')
+ylabel('States')
 
-%% 3.6
+%% 3.6: Steady State Kalman Gain and covariance
 C = eye(2);
+W = (0.0001);
 V = 0.00001*eye(2);
-E = B;
-W = 0.0001;
-B_w = C;
-V = 0.00001*eye(2);
-[M_s,KF_gain,L,info] = idare(A',C',B_w*W*B_w',[],V,[],[]);
-Plant = ss(A,[B B],C,0,-1);%,'inputname',{'u' 'w'},'outputname','y');
-[kalmf,L,P,M] = kalman(Plant,W,V);
-kalmf = kalmf(1,:);
+Plant = ss(A,[B B], C, 0,-1);
+[kalmf, L, P, M] = kalman(Plant,Q,R);
+% [K_kf_dlqr,cov_kf_dlqr] = dlqr(A',C',W,V);
+% [cov__kf_dare,K__kf_dare,L_kf,info_kf] = idare(A',C',W,V,[],[]);
+[P_k, K_kf] = idare(A',C',Q,R);
 %% 3.7
-Bw_k_1 = C;
-sys = ss(A,B,C);
 x0 = [2;0];
-x_k_1_k_1 = x0;
-u_k_1 = 0;
-M_k_minus_1 = 0;
-
-for k = 1:20
-    x_k_k_1 = A * x_k_1_k_1 + B * u_k_1;
-    M_k = A * M_k_minus_1 * A' + Bw_k_1 * W * Bw_k_1'; % B_w???????
-    F_k = M_k * C' * inv( C * M_k * C' + V);
-    M_k_plus_1 =  M_k - F_k * C * M_k;
-    y_k = C*x_k + v_k;
-    x_k_k = x_k_k_1 + F_k *(y_k - (C_k * x_k_k_1)); % y_k???????
-    u_k = -K * x_k_k;
-    x_k_k_1 = x_k_k;
-    M_k = M_k_plus_1;
-
+x_hat_k(:,1) = [2;0];
+y_hat_k(:,1) = C*x_hat_k(:,1);
+K_kf = P_k*C'*inv(C*P_k*C' + V);
+for k = 2:100
+    
+    u_k = -K_dlqr*x_hat_k(:,k-1);
+    x_hat_k(:,k) = x_hat_k(:,k-1) + (A*x_hat_k(:,k-1)+ B*u_k ) + K_kf*(y_k_all(k,:)' - y_hat_k(:,k-1));
+    y_hat_k(:,k) = C*x_hat_k(:,k); 
 end
+
+figure (2)
+plot(1:k ,x_hat_k)
+title('Trajectory of the stochastic system')
+xlabel('Time Steps')
+ylabel('Predicted State')

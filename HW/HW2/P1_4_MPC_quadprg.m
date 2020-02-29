@@ -36,7 +36,7 @@ end
 f_bar = f_bar_mat(A,N_total);
 B_bar = B_bar_matrix(A,B,N_total,N_total);
 
-H = B_bar'*Q_bar*B_bar + R_bar;
+H = 0.5* B_bar'*Q_bar*B_bar + R_bar;
 L_bar_ul = -1*eye(N_total);
 L_bar_uu = eye(N_total);
 L_bar_u = cat(1,L_bar_ul,L_bar_uu);
@@ -58,7 +58,9 @@ x2_limit = -5:0.1:5;
 feas_mat = []; % feasibilty matrix
 
 for st1 = 1:size(X,1)
-    for st2 = 1:size(Y,1)
+    st22 = 0 ;
+    for st2 = size(Y,1):-1:1
+        st22  = st22 + 1;
         x1 = X(st2,st1);
         x2 = Y(st2,st1);
         x2_0 = [x1;x2]
@@ -67,20 +69,21 @@ for st1 = 1:size(X,1)
         A_quad2 = [L_bar_u; L_bar_xl*B_bar;L_bar_xu*B_bar];
         b_quad2 = [b_bar_u ; b_bar_xl - L_bar_xl*f_bar2_x0; b_bar_xu - L_bar_xu*f_bar2_x0];
         [u2,fval,exitflag,output,lambda] =  quadprog(H,f2,A_quad2,b_quad2);
-        if exitflag == 1
-            feas_mat(st2,st1) = 1;
+        if exitflag > 0
+            feas_mat(st22,st1) = 1;
         else
-            feas_mat(st2,st1) = 0;
+            feas_mat(st22,st1) = 0;
         end
     end
 end
-% Saving Parameters
-filename = 'feasibility2.mat';
+%% Saving Parameters
+figure(1)
+plt_map = image(feas_mat*255);
+colormap
+xlim([-5 5])
+filename = 'feasibility_final.mat';
 save(filename,'feas_mat');
 
-%% Plotting the feasibility map
-feas_plot = image(feas_mat*255);
-colormap
 %% 1.4
 x_exe = [];
 x_pred = [];
@@ -88,7 +91,6 @@ u_opt = [];
 x0 = [2;0];
 for i = 1:N_total+50
     f_bar_x0 = f_bar*x0;
-    ref_ind  = 0 ;% Slide window for reference
     f = (f_bar_x0'*Q_bar*B_bar) - (G_bar(2*(i)-1:2*(i-1)+2*(N_total+1),1)'*Q_bar*B_bar);
     A_quad = [L_bar_u; L_bar_xl*B_bar;L_bar_xu*B_bar];
     b_quad = [b_bar_u ; b_bar_xl - L_bar_xl*f_bar_x0; b_bar_xu - L_bar_xu*f_bar_x0];
@@ -100,46 +102,36 @@ for i = 1:N_total+50
     
     x_pred_i = f_bar_x0 + B_bar * u; % Predicted Trajectory
     x_pred = [x_pred ; x_pred_i'];
+    figure(2)
+%     plot(x_pred_i(1:2:end), x_pred_i(2:2:end))
+%     hold on
     x0 = x_k_1;
 end
-% Plotting
-close all
-figure(1)
-plot(1:size(x_exe,1), x_pred(1:size(x_exe,1),1),'b-')
-hold on
-plot(1:size(x_exe,1), x_pred(1:size(x_exe,1),2),'b-')
-hold on
-plot(1:size(x_exe,1),x_exe(:,1),'r-')
-hold on
-plot(1:size(x_exe,1),x_exe(:,2),'g-')
-
-xlabel('time steps')
+%Plotting
+plot(x_exe(:,1), x_exe(:,2))
+xlim([-0.5 2.2])
+xlabel('Number of steps')
 ylabel('Value of parameter')
 title('Executed and Predicted Trajectories')
-legend('Predicted x1','Predicted x2' ,'Executed x1','Executed x2')
+legend('Predicted','Executed')
 
-%% Predicted Trajectories
-figure(2)
-for ind = 1:(size(x_pred,2))
-    disp(ind)
-    plot(1:size(x_pred,1)/2, x_pred(1:2:end,ind))
-    hold on
-    plot(1:size(x_pred,1)/2, x_pred(2:2:end,ind))
-    hold on
-end
-plot(1:size(x_exe,1),x_exe(:,1),'bo')
+%%
+figure(3)
+plot(1:size(x_exe,1), x_pred,'b-')
 hold on
-plot(1:size(x_exe,1),x_exe(:,2),'go')
-xlabel('time steps')
+plot(1:size(x_exe,2),x_exe,'go')
+xlabel('Number of steps')
 ylabel('Value of parameter')
-title('Predicted Trajectories')
+title('Executed and Predicted Trajectories')
+legend('Predicted','Executed')
 %% 2.1: MPC with noise
+
 x_exe2 = [];
 x_pred2 = [];
 x0 = [2;0];
-sigma = 0.7;
+sigma = sqrt(0.00001);
 mu = 0;
-for i = 1:N_total
+for i = 1:N_total+50
     f_bar2_x0 = f_bar*x0;
     w_k = normrnd(mu,sigma);
     f2 = (f_bar2_x0'*Q_bar*B_bar) - (G_bar(2*(i)-1:2*(i-1)+2*(N_total+1),1)'*Q_bar*B_bar);
@@ -153,25 +145,27 @@ for i = 1:N_total
     x_pred_i = f_bar_x0 + B_bar * (u+w_k); % Predicted Trajectory
     x_pred2 = [x_pred2 ; x_pred_i'];
     x0 = x_k_1;
+    figure(4)
+    plot(x_pred_i(1:2:end), x_pred_i(2:2:end))
+    hold on
 end
 
-% Plotting
-close all
-figure(3)
-plot(1:size(x_exe2,1), x_pred(1:size(x_exe2,1),1),'b-')
-hold on
-plot(1:size(x_exe2,1), x_pred(1:size(x_exe2,1),2),'b-')
-hold on
-plot(1:size(x_exe2,1),x_exe2(:,1),'r-')
-hold on
-plot(1:size(x_exe2,1),x_exe2(:,2),'g-')
-
-xlabel('time steps')
+%% Plotting
+plot(x_exe2(:,1), x_exe2(:,2))
+xlim([-2 2])
+xlabel('Number of steps')
 ylabel('Value of parameter')
-title('2.1: Executed and Predicted Trajectories with Noise')
+title('Executed and Predicted Trajectories with Noise')
+legend('Predicted','Executed')
 
-legend('Predicted x1','Predicted x2' ,'Executed x1','Executed x2')
-
+figure(5)
+% plot(1:size(x_exe2,1), x_pred2,'b-')
+% hold on
+plot(1:size(x_exe2,1),x_exe2,'r-')
+xlabel('Number of steps')
+ylabel('Value of parameter')
+title('Executed Trajectory with Noise')
+legend('Predicted','Executed')
 %% 2.2: Error from trajectory
 E_1 = x_exe - x_exe2;
 
@@ -179,14 +173,50 @@ E_1 = x_exe - x_exe2;
 uk_mpc = u_opt;
 x1_opt = x_exe;
 x0 = [2;0];
-L_k0  = zeros(100,size(E_1,1));
+L_k0  = zeros(1,2);
+L_k_all = [];
 opt_xk = [];
-% for i = 1:size(uk_mpc,1)
-%     int_fun = (x1_opt(i,:) - (A*x0 + B*(uk_mpc(i) + L_k*E_1(i,:))));  % Function to minimize
-% % fun = @(L_k)
-% L_k = fmincon(fun,L_k0,[],[]);
+f_val_mat = [];
+Q = 0.9;
+for i = 1:size(uk_mpc,1)
+    error_2 = (@(L) norm((x1_opt(i,:) - (A*x0 + Q*B*(uk_mpc(i) + L(1)*E_1(i,1)+ L(2)*E_1(i,2))))));
+    [L,f_val] = fmincon(error_2,L_k0,[],[]);
+    x0 = (A*x0 + B*(uk_mpc(i) + L(:,1)*E_1(i,1)+ L(:,2)*E_1(i,2)));
+    L_k_all = [L_k_all; L];
+    f_val_mat  = [f_val_mat ; f_val];
+end
+figure(6)
+plot(f_val_mat,'*')
+xlabel('Number of steps')
+ylabel('Error Magnitude')
+title('Error with the new Control Law')
 
 
+%% 2.4: Feedforward Learning Gain
+x_exe2 = [];
+x_pred2 = [];
+x0 = [2;0];
+sigma = 0.007;
+mu = 0;
+Q = 0.9;
+x_exec_L_Q_mat = [];
+for i = 1:N_total+50
+    x_exec_L_Q =  A*x0 + B*(Q*(uk_mpc(i) + L_k_all(i,1)*E_1(i,1)+ L_k_all(i,2)*E_1(i,2)));
+    x0 = x_exec_L_Q;
+    x_exec_L_Q_mat = [x_exec_L_Q_mat; x_exec_L_Q'];
+end
+figure(7)
+plot(x_exec_L_Q_mat,'b-')
+xlabel('Number of steps')
+ylabel('Value of parameter')
+title('Executed Trajectory with Feedforward Gain and Q-filter')
+
+%%
+function out = E_2(L,x1_opt, A, B, uk_mpc, E_1,x0,i)
+    disp(L)
+    error_2 = (x1_opt(i,:) - (A*x0 + B*(uk_mpc(i) + L(1)*E_1(i,1)+ L(2)*E_1(i,2))));
+    out = norm(error_2);
+end
 function [f_bar] = f_bar_mat(A,N_total)
         f_bar = [];
 for i = 0:N_total
